@@ -24,38 +24,28 @@ from sklearn.linear_model import LogisticRegression
 from torch import nn, optim
 from torch.nn import functional as F
 
-###################################
 # Importing the clinical data for diagnostic and the predictor data
 # NN trained on ADNI1 for genetic purposes (sub-cohort that only contains DAT and NC)
-####################################
 
-# These predictors are ALL of the FreeFreesurfer extracted statistics
+# Load all FreeFreesurfer extracted statistics. These are the predictors for the neural network.
 Predictors = pd.read_csv(r"Data_02.csv", index_col=0)
-# Predictors = pd.read_csv(r'Data_02.csv',index_col=0)
 
-# Small Predictors is the subset of 56 features selected by experts
+# Load a subset of 56 features selected by experts. These are a smaller set of predictors for the neural network.
 SPredictors = pd.read_csv(r"ExpertFeatures_01 .csv", index_col=0)
-# SPredictors = pd.read_csv(r'ExpertFeatures_01 .csv',index_col=0)
 
-# Clinical contains the response (AD Diagnosis)
+# Load clinical data which contains the response variable (AD Diagnosis)
 Clinical = pd.read_csv(r"ClinicalInfo.csv")
 
+# Filter clinical data to only include records present in predictors. This ensures that we have predictor and response data for the same set of records.
 ClinicalID = Clinical[Clinical["RID"].isin(np.array(Predictors.index, dtype=int))]
 
-# Including age as a predictor for both set of predictors
+# Set RID as index for filtered clinical data. This makes it easier to join with predictors data.
 ClinicalID = ClinicalID.set_index("RID")
 
-# Age used to be included to control for it, we are now looking at a new approach to do so
-# Age = ClinicalID['AGE']
-# Predictors = Predictors.join(Age,how='right')
-# SPredictors = SPredictors.join(Age,how='right')
-
+# Filter clinical data to only include baseline visit records. This is because we're interested in predicting diagnosis based on baseline visit data.
 ClinicalF = ClinicalID[ClinicalID["VISCODE"] == "bl"]
 
-
-ClinicalF["AUX.DIAGNOSIS"].value_counts()
-ClinicalF["AUX.STRATIFICATION"].value_counts()
-
+# Create response variable by selecting the 'AUX.STRATIFICATION' column and filtering to only include specific categories.
 Response = ClinicalF["AUX.STRATIFICATION"]
 Response = Response.loc[
     (Response == "sDAT")
@@ -63,13 +53,15 @@ Response = Response.loc[
     | (Response == "eDAT")
     | (Response == "uNC")
 ]
+
+# Recode response variable to have simpler categories.
 Response.loc[(Response == "sDAT") | (Response == "eDAT")] = "DAT"
 Response.loc[(Response == "sNC") | (Response == "uNC")] = "NC"
-Response.value_counts()
 
-# PandaData is the data containing our data set with all the features
+# Join predictors with response to create final dataset. This dataset will be used for training the neural network.
 PandaData = Predictors.join(Response, how="right")
 
+# Do the same for the smaller set of predictors.
 PandaSData = SPredictors.join(Response, how="right")
 
 ####################################
