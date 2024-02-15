@@ -151,12 +151,11 @@ class NeuralNetwork(nn.Module):
         self.layer1 = nn.Linear(args.xdim, 750)
         self.layer2 = nn.Linear(750, feature_count)
         self.layer3 = nn.Linear(feature_count, args.nc)
-        self.activation_function = F.relu
-        self.dropout_layer = nn.Dropout(0.5)
+        self.activation = F.relu
 
     def forward(self, x):
-        x = self.activation_function(self.layer1(x))
-        x = self.activation_function(self.layer2(x))
+        x = self.activation(self.layer1(x))
+        x = self.activation(self.layer2(x))
         output = F.log_softmax(self.layer3(x), dim=1)
         return output, x
 
