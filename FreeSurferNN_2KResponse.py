@@ -140,37 +140,45 @@ class NeuralNetwork(nn.Module):
 
 # Numpy/tensor data
 
+# Convert the pandas dataframe to a numpy array for easier manipulation
 npData = np.array(PandaData)
+
+# Convert the categorical response variable to numerical values
+# This is necessary because neural networks can only work with numerical data
 c, v = np.unique(npData[:, -1], return_inverse=True)
 npData[:, -1] = v
+
+# Convert the data type to float for compatibility with PyTorch
 npData = npData.astype(float)
 
+# Randomly permute the data. This is done to ensure that the training and test sets are representative of the overall distribution of the data.
 perm = np.random.permutation(npData.shape[0])
+
+# Convert the numpy array to a PyTorch tensor. PyTorch is a library for deep learning, and it works with data in the form of tensors.
 Data = torch.tensor(npData[perm, :])
 
+# Repeat the above steps for the smaller set of predictors
 npSData = np.array(PandaSData)
 c, v = np.unique(npSData[:, -1], return_inverse=True)
 npSData[:, -1] = v
 npSData = npSData.astype(float)
-
 SData = npSData[perm, :]
 
-# Prepare torch data and normalize predictors
+# Split the data into training, validation, and test sets. This is a common practice in machine learning, where we train on one set of data, tune the model on a second set of data, and finally evaluate the model's performance on a third set of data.
 TrainData = Data[0 : args.ntr]
-TrainData[:, 0:-1] = torch.nn.functional.normalize(TrainData[:, 0:-1])
 ValData = Data[args.ntr : (args.ntr + args.nval)]
-ValData[:, 0:-1] = torch.nn.functional.normalize(ValData[:, 0:-1])
 TestData = Data[(args.ntr + args.nval) :]
+
+# Normalize the predictors in the training, validation, and test sets. Normalization ensures that all predictors are on the same scale and that the model is not unduly influenced by predictors that happen to have larger values.
+TrainData[:, 0:-1] = torch.nn.functional.normalize(TrainData[:, 0:-1])
+ValData[:, 0:-1] = torch.nn.functional.normalize(ValData[:, 0:-1])
 TestData[:, 0:-1] = torch.nn.functional.normalize(TestData[:, 0:-1])
 
-# Divide small data set as well
+# Repeat the data splitting step for the smaller set of predictors
 TrainSData = SData[0 : (args.ntr + args.nval)]
 TestSData = SData[(args.ntr + args.nval) :]
 
-####################################
-# Define the training procedure
-####################################
-# Define data loaders
+# Define data loaders for the training, validation, and test sets. Data loaders are a PyTorch utility for loading data in parallel. Batch size defines the number of samples that will be propagated through the network at once. Shuffle ensures that the data gets shuffled at every epoch.
 train_loader = torch.utils.data.DataLoader(TrainData, batch_size=100, shuffle=True)
 val_loader = torch.utils.data.DataLoader(ValData)
 test_loader = torch.utils.data.DataLoader(TestData)
