@@ -12,35 +12,17 @@ Using FreeSurfer output as NN classifier input
 # Import packages
 ####################################
 
-from __future__ import print_function  # all part of pytorch
+from __future__ import print_function
 import argparse
-import torch
-import torch.utils.data
-from torch import nn, optim
-from torch.nn import functional as F
-from torchvision import datasets, transforms
-from torchvision.utils import save_image
-import itertools
-
 import numpy as np
 import pandas as pd
-import seaborn as sns  # package
-import matplotlib.pyplot as plt
-import nibabel as nbl
-from nipype.interfaces.freesurfer import AddXFormToHeader
-import time
-import cv2
-from sklearn.linear_model import LogisticRegression  # package
+import torch
+import torch.utils.data
+from ignite.metrics import Accuracy
 from sklearn import metrics
-
-from ignite.engine import (
-    Engine,
-    Events,
-    create_supervised_trainer,
-    create_supervised_evaluator,
-)
-from ignite.handlers import EarlyStopping
-from ignite.metrics import Precision, Accuracy
+from sklearn.linear_model import LogisticRegression
+from torch import nn, optim
+from torch.nn import functional as F
 
 ###################################
 # Importing the clinical data for diagnostic and the predictor data
