@@ -13,6 +13,10 @@ Using FreeSurfer output as NN classifier input
 ####################################
 
 from __future__ import print_function
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from torch.utils.data import DataLoader, TensorDataset
+from sklearn.metrics import roc_curve, auc
 import argparse
 import numpy as np
 import pandas as pd
@@ -140,99 +144,132 @@ class NeuralNetwork(nn.Module):
 
 # Numpy/tensor data
 
-# Convert the pandas dataframe to a numpy array for easier manipulation
-npData = np.array(PandaData)
-
 # Convert the categorical response variable to numerical values
-# This is necessary because neural networks can only work with numerical data
-c, v = np.unique(npData[:, -1], return_inverse=True)
-npData[:, -1] = v
+le = LabelEncoder()
+PandaData.iloc[:, -1] = le.fit_transform(PandaData.iloc[:, -1])
+PandaSData.iloc[:, -1] = le.transform(PandaSData.iloc[:, -1])
 
-# Convert the data type to float for compatibility with PyTorch
-npData = npData.astype(float)
+# Split the data into training, validation, and test sets
+train_data, temp_data = train_test_split(PandaData, test_size=0.4, random_state=42)
+val_data, test_data = train_test_split(temp_data, test_size=0.5, random_state=42)
 
-# Randomly permute the data. This is done to ensure that the training and test sets are representative of the overall distribution of the data.
-perm = np.random.permutation(npData.shape[0])
+# Normalize the predictors in the training, validation, and test sets
+scaler = StandardScaler()
+train_data = scaler.fit_transform(train_data)
+val_data = scaler.transform(val_data)
+test_data = scaler.transform(test_data)
 
-# Convert the numpy array to a PyTorch tensor. PyTorch is a library for deep learning, and it works with data in the form of tensors.
-Data = torch.tensor(npData[perm, :])
+# Convert the pandas dataframes to PyTorch tensors
+train_data = torch.tensor(train_data, dtype=torch.float)
+val_data = torch.tensor(val_data, dtype=torch.float)
+test_data = torch.tensor(test_data, dtype=torch.float)
+
+# Define data loaders for the training, validation, and test sets
+train_loader = DataLoader(TensorDataset(train_data), batch_size=100, shuffle=True)
+val_loader = DataLoader(TensorDataset(val_data))
+test_loader = DataLoader(TensorDataset(test_data))
 
 # Repeat the above steps for the smaller set of predictors
-npSData = np.array(PandaSData)
-c, v = np.unique(npSData[:, -1], return_inverse=True)
-npSData[:, -1] = v
-npSData = npSData.astype(float)
-SData = npSData[perm, :]
+train_sdata, temp_sdata = train_test_split(PandaSData, test_size=0.4, random_state=42)
+val_sdata, test_sdata = train_test_split(temp_sdata, test_size=0.5, random_state=42)
 
-# Split the data into training, validation, and test sets. This is a common practice in machine learning, where we train on one set of data, tune the model on a second set of data, and finally evaluate the model's performance on a third set of data.
-TrainData = Data[0 : args.ntr]
-ValData = Data[args.ntr : (args.ntr + args.nval)]
-TestData = Data[(args.ntr + args.nval) :]
+train_sdata = scaler.fit_transform(train_sdata)
+val_sdata = scaler.transform(val_sdata)
+test_sdata = scaler.transform(test_sdata)
 
-# Normalize the predictors in the training, validation, and test sets. Normalization ensures that all predictors are on the same scale and that the model is not unduly influenced by predictors that happen to have larger values.
-TrainData[:, 0:-1] = torch.nn.functional.normalize(TrainData[:, 0:-1])
-ValData[:, 0:-1] = torch.nn.functional.normalize(ValData[:, 0:-1])
-TestData[:, 0:-1] = torch.nn.functional.normalize(TestData[:, 0:-1])
-
-# Repeat the data splitting step for the smaller set of predictors
-TrainSData = SData[0 : (args.ntr + args.nval)]
-TestSData = SData[(args.ntr + args.nval) :]
-
-# Define data loaders for the training, validation, and test sets. Data loaders are a PyTorch utility for loading data in parallel. Batch size defines the number of samples that will be propagated through the network at once. Shuffle ensures that the data gets shuffled at every epoch.
-train_loader = torch.utils.data.DataLoader(TrainData, batch_size=100, shuffle=True)
-val_loader = torch.utils.data.DataLoader(ValData)
-test_loader = torch.utils.data.DataLoader(TestData)
+train_sdata = torch.tensor(train_sdata, dtype=torch.float)
+val_sdata = torch.tensor(val_sdata, dtype=torch.float)
+test_sdata = torch.tensor(test_sdata, dtype=torch.float)
 
 
-# training function
+# Training function
 def train(epoch, optimizer):
+    # Set the model to training mode. This is necessary because certain layers like dropout and batchnorm behave differently during training.
     model.train()
-    train_loss = 0
+
+    # Loop over each batch from the training set
     for id, data in enumerate(train_loader):
+        # Move tensors to the configured device
         data = data.to(device)
+
+        # Split the data into inputs and targets
         inputs, target = data[:, 0:-1], data[:, -1].type(torch.LongTensor)
-        # print(target[0:10])
-        # target = torch.cat((0*torch.ones(125),torch.ones(125))).type(torch.LongTensor)
+
+        # Forward pass: compute the output and hidden features by passing inputs to the model
         output, f = model(inputs.float())
-        # print(output[1:10,:])
+
+        # Compute the loss
         loss = F.nll_loss(output, target)
+
+        # Backward pass: compute gradient of the loss with respect to model parameters
         loss.backward()
-        # print('====> Epoch: {} Average loss: {:.4f}'.format(epoch,loss ))
+
+        # Perform a single optimization step (parameter update)
         optimizer.step()
 
 
-# accuracy function for assesment
+# Function to compute accuracy
 def accuracy(args, model, data):
+    # Split the data into inputs and targets
     inputs, target = data[:, 0:-1], data[:, -1].type(torch.LongTensor)
+
+    # Forward pass: compute the output and hidden features by passing inputs to the model
     output, f = model(inputs.float())
+
+    # Get the index of the max log-probability
     pred = output.argmax(dim=1, keepdim=True)
+
+    # Compute the number of correct predictions
     correct = pred.eq(target.view_as(pred)).sum().item()
+
+    # Compute the accuracy
     acc = correct / data.shape[0]
+
     return acc
 
 
-# accuracy function for assesment
+# Function to compute Area Under the Receiver Operating Characteristic Curve (ROC AUC)
 def AUC(args, model, data):
+    # Split the data into inputs and targets
     inputs, target = data[:, 0:-1], data[:, -1].type(torch.LongTensor)
+
+    # Forward pass: compute the output and hidden features by passing inputs to the model
     output, f = model(inputs.float())
+
+    # Get the index of the max log-probability
     pred = output.argmax(dim=1, keepdim=True)
-    fpr, tpr, thresholds = metrics.roc_curve(target, pred)
-    auc = metrics.auc(fpr, tpr)
-    return auc
+
+    # Compute the ROC curve
+    fpr, tpr, thresholds = roc_curve(target, pred)
+
+    # Compute the AUC score
+    auc_score = auc(fpr, tpr)
+
+    return auc_score
 
 
-# return pred for CV
+# Function to get predictions for cross-validation
 def predictions(args, model, data):
+    # Split the data into inputs and targets
     inputs, target = data[:, 0:-1], data[:, -1].type(torch.LongTensor)
+
+    # Forward pass: compute the output and hidden features by passing inputs to the model
     output, f = model(inputs.float())
+
+    # Get the index of the max log-probability
     pred = output.argmax(dim=1, keepdim=True)
+
     return pred
 
 
-# initialize model parameters
+# Function to initialize model parameters
 def model_init(args, model, std):
+    # Initialize weights of the first fully connected layer with normal distribution
     torch.nn.init.normal_(model.fc1.weight, 0, std)
+
+    # Initialize weights of the third fully connected layer with normal distribution
     torch.nn.init.normal_(model.fc3.weight, 0, std)
+
     return model
 
 
